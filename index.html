@@ -209,6 +209,16 @@ main{padding-top:12px;}
 }
 .tienda-select:focus-visible{outline:2px solid var(--focus);outline-offset:2px;}
 .tienda-select.attention{border-color:#F04E24;box-shadow:0 0 0 4px rgba(240,78,36,0.22);}
+.tipo-picker{
+  background:var(--bg-block);
+  border:1px solid var(--border);
+  border-radius:8px;
+  padding:14px 16px 4px;
+  margin:0 0 18px;
+}
+.tipo-picker.attention{border-color:#F04E24;box-shadow:0 0 0 4px rgba(240,78,36,0.22);}
+.tipo-picker-label{margin:0 0 6px;font-weight:600;font-size:0.95rem;color:var(--text);}
+.tipo-option{padding-left:0;padding-right:0;}
 .gerente-result{
   margin:10px 0 0;
   font-size:0.92rem;
@@ -708,7 +718,13 @@ footer.site-footer .official-note{margin-top:10px;font-style:italic;}
     <section id="checklists" class="section-anchor-offset" style="margin-top:28px;">
       <h2 style="padding:0 8px;">Checklists de recorrido</h2>
 
-      <div class="checklist-block">
+      <div class="tipo-picker" id="tipo-picker">
+        <p class="tipo-picker-label">¿Qué recorrido vienes a reportar?</p>
+        <label class="check-item tipo-option"><input type="checkbox" id="chk-tipo-apertura"><span>Reporte Recorrido de Apertura</span></label>
+        <label class="check-item tipo-option"><input type="checkbox" id="chk-tipo-cierre"><span>Reporte Recorrido de Cierre</span></label>
+      </div>
+
+      <div class="checklist-block" id="checklist-apertura-block" hidden>
         <h3>Recorrido de apertura</h3>
         <div class="progress-row">
           <span class="progress-count" data-count-for="apertura">0/10 completado</span>
@@ -729,7 +745,7 @@ footer.site-footer .official-note{margin-top:10px;font-style:italic;}
         </div>
       </div>
 
-      <div class="checklist-block">
+      <div class="checklist-block" id="checklist-cierre-block" hidden>
         <h3>Recorrido de cierre</h3>
         <div class="progress-row">
           <span class="progress-count" data-count-for="cierre">0/9 completado</span>
@@ -912,22 +928,26 @@ footer.site-footer .official-note{margin-top:10px;font-style:italic;}
     'btn-bms': {
       subject: 'Consulta / solicitud de cambio de parámetros BMS – Tienda {TIENDA}',
       body: 'Tienda: {TIENDA}\nSistema o parámetro: \nDescripción de la consulta o solicitud: \n',
-      requiresTienda: true
+      requiresTienda: true,
+      tipo: 'Consulta BMS'
     },
     'btn-aviso': {
       subject: 'Aviso de operación fuera de la ventana definida – Tienda {TIENDA}',
       body: 'Tienda: {TIENDA}\nFecha (DD/MM/AAAA): \nHorario requerido: \nSistemas involucrados: \nActividad: \n\nRecordatorio: este aviso se envía con al menos 48 horas de anticipación.',
-      requiresTienda: true
+      requiresTienda: true,
+      tipo: 'Aviso fuera de ventana'
     },
     'btn-metasys': {
       subject: 'Solicitud de cuenta Metasys – Tienda {TIENDA}',
       body: 'Nombre completo: \nCargo: \nTienda: {TIENDA}\nCorreo corporativo: \n',
-      requiresTienda: true
+      requiresTienda: true,
+      tipo: 'Solicitud Metasys'
     },
     'btn-floating': {
       subject: 'Control Operacional - {TIENDA}',
       body: null,
-      requiresTienda: false
+      requiresTienda: false,
+      tipo: 'Consulta general'
     }
   };
 
@@ -944,6 +964,19 @@ footer.site-footer .official-note{margin-top:10px;font-style:italic;}
     });
   }
 
+  function logButtonClick(id){
+    var def = MAILTO_DEFS[id];
+    if (!def) return;
+    var store = getStoreActual();
+    logToSheet({
+      tienda: getTiendaNombre(),
+      responsable: (responsableInput && responsableInput.value.trim()) ? responsableInput.value.trim() : '',
+      tipo: def.tipo,
+      estado: 'Enviado',
+      detalle: ''
+    });
+  }
+
   [ 'btn-bms', 'btn-aviso', 'btn-metasys' ].forEach(function(id){
     var el = document.getElementById(id);
     if (!el) return;
@@ -953,9 +986,17 @@ footer.site-footer .official-note{margin-top:10px;font-style:italic;}
         tiendaSelect.classList.add('attention');
         tiendaSelect.scrollIntoView({ behavior: 'smooth', block: 'center' });
         window.alert('Seleccione Tienda');
+        return;
       }
+      logButtonClick(id);
     });
   });
+
+  (function(){
+    var el = document.getElementById('btn-floating');
+    if (!el) return;
+    el.addEventListener('click', function(){ logButtonClick('btn-floating'); });
+  })();
 
   if (tiendaSelect) {
     var zonas = [];
@@ -1013,6 +1054,22 @@ footer.site-footer .official-note{margin-top:10px;font-style:italic;}
     });
   }
 
+  var tipoPicker = document.getElementById('tipo-picker');
+  var chkApertura = document.getElementById('chk-tipo-apertura');
+  var chkCierre = document.getElementById('chk-tipo-cierre');
+  var bloqueApertura = document.getElementById('checklist-apertura-block');
+  var bloqueCierre = document.getElementById('checklist-cierre-block');
+
+  function refreshTipoVisibilidad(){
+    if (chkApertura.checked || chkCierre.checked) { tipoPicker.classList.remove('attention'); }
+    bloqueApertura.hidden = !chkApertura.checked;
+    bloqueCierre.hidden = !chkCierre.checked;
+  }
+  if (chkApertura && chkCierre) {
+    chkApertura.addEventListener('change', refreshTipoVisibilidad);
+    chkCierre.addEventListener('change', refreshTipoVisibilidad);
+  }
+
   var reportBtn = document.getElementById('report-recorrido-btn');
   if (reportBtn) {
     reportBtn.addEventListener('click', function(){
@@ -1028,8 +1085,26 @@ footer.site-footer .official-note{margin-top:10px;font-style:italic;}
         window.alert('Ingresa el responsable del recorrido');
         return;
       }
+      if (!(chkApertura.checked || chkCierre.checked)) {
+        tipoPicker.classList.add('attention');
+        tipoPicker.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        window.alert('Selecciona qué recorrido vas a reportar');
+        return;
+      }
 
-      var allBoxes = document.querySelectorAll('[data-checklist="apertura"] input[type="checkbox"], [data-checklist="cierre"] input[type="checkbox"]');
+      var selectors = [];
+      var tipoLabel;
+      if (chkApertura.checked && chkCierre.checked) {
+        selectors = ['[data-checklist="apertura"] input[type="checkbox"]', '[data-checklist="cierre"] input[type="checkbox"]'];
+        tipoLabel = 'Ambos';
+      } else if (chkApertura.checked) {
+        selectors = ['[data-checklist="apertura"] input[type="checkbox"]'];
+        tipoLabel = 'Recorrido de Apertura';
+      } else {
+        selectors = ['[data-checklist="cierre"] input[type="checkbox"]'];
+        tipoLabel = 'Recorrido de Cierre';
+      }
+      var allBoxes = document.querySelectorAll(selectors.join(', '));
       var pending = [];
       allBoxes.forEach(function(cb){
         if (!cb.checked) {
@@ -1044,13 +1119,13 @@ footer.site-footer .official-note{margin-top:10px;font-style:italic;}
       var hoy = fechaHoy();
 
       if (pending.length === 0) {
-        logToSheet({ tienda: tiendaNombre, responsable: responsableNombre, estado: 'Sin Reporte', detalle: '' });
+        logToSheet({ tienda: tiendaNombre, responsable: responsableNombre, tipo: tipoLabel, estado: 'Sin Reporte', detalle: '' });
         window.alert('Recorrido registrado sin hallazgos');
       } else {
         var listado = pending.map(function(t){ return '- ' + t; }).join('\n');
         var msg = 'Los siguientes ítems no están cumpliendo la consigna indicada:\n\n' + listado + '\n\nSe registrará en la planilla y se enviará un correo a la Gerencia de Energía notificando la situación. ¿Continuar?';
         if (window.confirm(msg)) {
-          logToSheet({ tienda: tiendaNombre, responsable: responsableNombre, estado: 'Con reporte', detalle: listado });
+          logToSheet({ tienda: tiendaNombre, responsable: responsableNombre, tipo: tipoLabel, estado: 'Con reporte', detalle: listado });
           var subjBad = 'Reporte de recorrido – Hallazgos – Tienda ' + tiendaNombre;
           var bodyBad = 'Tienda: ' + tiendaNombre + '\nFecha: ' + hoy + '\n\nÍtems que no están cumpliendo la consigna indicada:\n' + listado;
           window.location.href = buildMailto(mainRecipients, ccEmail, subjBad, bodyBad);
