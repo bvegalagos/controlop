@@ -468,6 +468,9 @@ footer.site-footer .official-note{margin-top:10px;font-style:italic;}
           <option value="">Seleccione tienda</option>
         </select>
         <p class="gerente-result" id="gerente-result">Selecciona tu tienda para completar el correo de copia (CC) del Gerente de Tienda en los botones de contacto.</p>
+
+        <label class="tienda-picker-label" for="responsable-input" style="margin-top:14px;">Responsable del recorrido</label>
+        <input type="text" id="responsable-input" class="tienda-select" placeholder="Ej: Juan Pérez" autocomplete="name">
       </div>
 
       <p>Para consultas o cambios en los parámetros BMS, contactar siempre a la Gerencia de Energía vía correo electrónico. Es la única contraparte autorizada para fijar o modificar parámetros de control operacional.</p>
@@ -992,9 +995,40 @@ footer.site-footer .official-note{margin-top:10px;font-style:italic;}
 
   refreshMailtoLinks();
 
+  var APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyqB4zGVNrjwR2EpleS5rjSu2dSfoePZiH9ckS-uOWR2nSu9Wy1KXHnIKuKCR7MiSpPMg/exec';
+
+  function logToSheet(payload){
+    try {
+      return fetch(APPS_SCRIPT_URL, { method: 'POST', body: JSON.stringify(payload) })
+        .catch(function(err){ console.error('No se pudo registrar en la planilla:', err); });
+    } catch (err) {
+      console.error('No se pudo registrar en la planilla:', err);
+    }
+  }
+
+  var responsableInput = document.getElementById('responsable-input');
+  if (responsableInput) {
+    responsableInput.addEventListener('input', function(){
+      if (responsableInput.value.trim()) { responsableInput.classList.remove('attention'); }
+    });
+  }
+
   var reportBtn = document.getElementById('report-recorrido-btn');
   if (reportBtn) {
     reportBtn.addEventListener('click', function(){
+      if (!(tiendaSelect && tiendaSelect.value)) {
+        tiendaSelect.classList.add('attention');
+        tiendaSelect.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        window.alert('Seleccione Tienda');
+        return;
+      }
+      if (!(responsableInput && responsableInput.value.trim())) {
+        responsableInput.classList.add('attention');
+        responsableInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        window.alert('Ingresa el responsable del recorrido');
+        return;
+      }
+
       var allBoxes = document.querySelectorAll('[data-checklist="apertura"] input[type="checkbox"], [data-checklist="cierre"] input[type="checkbox"]');
       var pending = [];
       allBoxes.forEach(function(cb){
@@ -1005,17 +1039,18 @@ footer.site-footer .official-note{margin-top:10px;font-style:italic;}
       });
 
       var tiendaNombre = getTiendaNombre();
+      var responsableNombre = responsableInput.value.trim();
       var ccEmail = getCcActual();
       var hoy = fechaHoy();
 
       if (pending.length === 0) {
-        var subjOk = 'Reporte sin notificación de hallazgos – Tienda ' + tiendaNombre;
-        var bodyOk = 'Tienda: ' + tiendaNombre + '\nFecha: ' + hoy + '\n\nRecorrido de apertura y cierre completado sin observaciones.';
-        window.location.href = buildMailto(['sge@falabella.cl'], null, subjOk, bodyOk);
+        logToSheet({ tienda: tiendaNombre, responsable: responsableNombre, estado: 'Sin Reporte', detalle: '' });
+        window.alert('Recorrido registrado sin hallazgos');
       } else {
         var listado = pending.map(function(t){ return '- ' + t; }).join('\n');
-        var msg = 'Los siguientes ítems no están cumpliendo la consigna indicada:\n\n' + listado + '\n\nSe enviará un correo a la Gerencia de Energía notificando la situación. ¿Continuar?';
+        var msg = 'Los siguientes ítems no están cumpliendo la consigna indicada:\n\n' + listado + '\n\nSe registrará en la planilla y se enviará un correo a la Gerencia de Energía notificando la situación. ¿Continuar?';
         if (window.confirm(msg)) {
+          logToSheet({ tienda: tiendaNombre, responsable: responsableNombre, estado: 'Con reporte', detalle: listado });
           var subjBad = 'Reporte de recorrido – Hallazgos – Tienda ' + tiendaNombre;
           var bodyBad = 'Tienda: ' + tiendaNombre + '\nFecha: ' + hoy + '\n\nÍtems que no están cumpliendo la consigna indicada:\n' + listado;
           window.location.href = buildMailto(mainRecipients, ccEmail, subjBad, bodyBad);
